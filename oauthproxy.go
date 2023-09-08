@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"embed"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -25,7 +26,9 @@ import (
 	"github.com/oauth2-proxy/oauth2-proxy/v7/pkg/app/redirect"
 	"github.com/oauth2-proxy/oauth2-proxy/v7/pkg/authentication/basic"
 	"github.com/oauth2-proxy/oauth2-proxy/v7/pkg/cookies"
+	"github.com/oauth2-proxy/oauth2-proxy/v7/pkg/encryption"
 	proxyhttp "github.com/oauth2-proxy/oauth2-proxy/v7/pkg/http"
+	"github.com/oauth2-proxy/oauth2-proxy/v7/pkg/util"
 
 	"github.com/oauth2-proxy/oauth2-proxy/v7/pkg/ip"
 	"github.com/oauth2-proxy/oauth2-proxy/v7/pkg/logger"
@@ -48,6 +51,7 @@ const (
 	oauthCallbackPath = "/callback"
 	authOnlyPath      = "/auth"
 	userInfoPath      = "/userinfo"
+	staticPathPrefix  = "/static/"
 )
 
 var (
@@ -56,11 +60,19 @@ var (
 
 	// ErrAccessDenied means the user should receive a 401 Unauthorized response
 	ErrAccessDenied = errors.New("access denied")
+
+	//go:embed static/*
+	staticFiles embed.FS
 )
 
 // allowedRoute manages method + path based allowlists
 type allowedRoute struct {
 	method    string
+	negate    bool
+	pathRegex *regexp.Regexp
+}
+
+type apiRoute struct {
 	pathRegex *regexp.Regexp
 }
 
@@ -72,6 +84,7 @@ type OAuthProxy struct {
 	SignInPath string
 
 	allowedRoutes       []allowedRoute
+	apiRoutes           []apiRoute
 	redirectURL         *url.URL // the url to receive requests at
 	whitelistDomains    []string
 	provider            providers.Provider
@@ -110,8 +123,13 @@ func NewOAuthProxy(opts *options.Options, validator func(string) bool) (*OAuthPr
 		var err error
 		basicAuthValidator, err = basic.NewHTPasswdValidator(opts.HtpasswdFile)
 		if err != nil {
-			return nil, fmt.Errorf("could not load htpasswdfile: %v", err)
+			return nil, fmt.Errorf("could not validate htpasswd: %v", err)
 		}
+	}
+
+	provider, err := providers.NewProvider(opts.Providers[0])
+	if err != nil {
+		return nil, fmt.Errorf("error initialising provider: %v", err)
 	}
 
 	pageWriter, err := pagewriter.NewWriter(pagewriter.Opts{
@@ -121,7 +139,7 @@ func NewOAuthProxy(opts *options.Options, validator func(string) bool) (*OAuthPr
 		Footer:           opts.Templates.Footer,
 		Version:          VERSION,
 		Debug:            opts.Templates.Debug,
-		ProviderName:     buildProviderName(opts.GetProvider(), opts.Providers[0].Name),
+		ProviderName:     buildProviderName(provider, opts.Providers[0].Name),
 		SignInMessage:    buildSignInMessage(opts),
 		DisplayLoginForm: basicAuthValidator != nil && opts.Templates.DisplayLoginForm,
 	})
@@ -145,7 +163,7 @@ func NewOAuthProxy(opts *options.Options, validator func(string) bool) (*OAuthPr
 		redirectURL.Path = fmt.Sprintf("%s/callback", opts.ProxyPrefix)
 	}
 
-	logger.Printf("OAuthProxy configured for %s Client ID: %s", opts.GetProvider().Data().ProviderName, opts.Providers[0].ClientID)
+	logger.Printf("OAuthProxy configured for %s Client ID: %s", provider.Data().ProviderName, opts.Providers[0].ClientID)
 	refresh := "disabled"
 	if opts.Cookie.Refresh != time.Duration(0) {
 		refresh = fmt.Sprintf("after %s", opts.Cookie.Refresh)
@@ -167,11 +185,16 @@ func NewOAuthProxy(opts *options.Options, validator func(string) bool) (*OAuthPr
 		return nil, err
 	}
 
-	preAuthChain, err := buildPreAuthChain(opts)
+	apiRoutes, err := buildAPIRoutes(opts)
+	if err != nil {
+		return nil, err
+	}
+
+	preAuthChain, err := buildPreAuthChain(opts, sessionStore)
 	if err != nil {
 		return nil, fmt.Errorf("could not build pre-auth chain: %v", err)
 	}
-	sessionChain := buildSessionChain(opts, sessionStore, basicAuthValidator)
+	sessionChain := buildSessionChain(opts, provider, sessionStore, basicAuthValidator)
 	headersChain, err := buildHeadersChain(opts)
 	if err != nil {
 		return nil, fmt.Errorf("could not build headers chain: %v", err)
@@ -190,9 +213,10 @@ func NewOAuthProxy(opts *options.Options, validator func(string) bool) (*OAuthPr
 		SignInPath: fmt.Sprintf("%s/sign_in", opts.ProxyPrefix),
 
 		ProxyPrefix:         opts.ProxyPrefix,
-		provider:            opts.GetProvider(),
+		provider:            provider,
 		sessionStore:        sessionStore,
 		redirectURL:         redirectURL,
+		apiRoutes:           apiRoutes,
 		allowedRoutes:       allowedRoutes,
 		whitelistDomains:    opts.WhitelistDomains,
 		skipAuthPreflight:   opts.SkipAuthPreflight,
@@ -280,7 +304,7 @@ func (p *OAuthProxy) buildServeMux(proxyPrefix string) {
 
 	// The authonly path should be registered separately to prevent it from getting no-cache headers.
 	// We do this to allow users to have a short cache (via nginx) of the response to reduce the
-	// likelihood of multiple reuests trying to referesh sessions simultaneously.
+	// likelihood of multiple requests trying to refresh sessions simultaneously.
 	r.Path(proxyPrefix + authOnlyPath).Handler(p.sessionChain.ThenFunc(p.AuthOnly))
 
 	// This will register all of the paths under the proxy prefix, except the auth only path so that no cache headers
@@ -301,6 +325,9 @@ func (p *OAuthProxy) buildProxySubrouter(s *mux.Router) {
 	s.Path(oauthStartPath).HandlerFunc(p.OAuthStart)
 	s.Path(oauthCallbackPath).HandlerFunc(p.OAuthCallback)
 
+	// Static file paths
+	s.PathPrefix(staticPathPrefix).Handler(http.StripPrefix(p.ProxyPrefix, http.FileServer(http.FS(staticFiles))))
+
 	// The userinfo endpoint needs to load sessions before handling the request
 	s.Path(userInfoPath).Handler(p.sessionChain.ThenFunc(p.UserInfo))
 }
@@ -308,7 +335,7 @@ func (p *OAuthProxy) buildProxySubrouter(s *mux.Router) {
 // buildPreAuthChain constructs a chain that should process every request before
 // the OAuth2 Proxy authentication logic kicks in.
 // For example forcing HTTPS or health checks.
-func buildPreAuthChain(opts *options.Options) (alice.Chain, error) {
+func buildPreAuthChain(opts *options.Options, sessionStore sessionsapi.SessionStore) (alice.Chain, error) {
 	chain := alice.New(middleware.NewScope(opts.ReverseProxy, opts.Logging.RequestIDHeader))
 
 	if opts.ForceHTTPS {
@@ -332,12 +359,14 @@ func buildPreAuthChain(opts *options.Options) (alice.Chain, error) {
 	if opts.Logging.SilencePing {
 		chain = chain.Append(
 			middleware.NewHealthCheck(healthCheckPaths, healthCheckUserAgents),
+			middleware.NewReadynessCheck(opts.ReadyPath, sessionStore),
 			middleware.NewRequestLogger(),
 		)
 	} else {
 		chain = chain.Append(
 			middleware.NewRequestLogger(),
 			middleware.NewHealthCheck(healthCheckPaths, healthCheckUserAgents),
+			middleware.NewReadynessCheck(opts.ReadyPath, sessionStore),
 		)
 	}
 
@@ -346,12 +375,12 @@ func buildPreAuthChain(opts *options.Options) (alice.Chain, error) {
 	return chain, nil
 }
 
-func buildSessionChain(opts *options.Options, sessionStore sessionsapi.SessionStore, validator basic.Validator) alice.Chain {
+func buildSessionChain(opts *options.Options, provider providers.Provider, sessionStore sessionsapi.SessionStore, validator basic.Validator) alice.Chain {
 	chain := alice.New()
 
 	if opts.SkipJwtBearerTokens {
 		sessionLoaders := []middlewareapi.TokenToSessionFunc{
-			opts.GetProvider().CreateSessionFromToken,
+			provider.CreateSessionFromToken,
 		}
 
 		for _, verifier := range opts.GetJWTBearerVerifiers() {
@@ -369,8 +398,8 @@ func buildSessionChain(opts *options.Options, sessionStore sessionsapi.SessionSt
 	chain = chain.Append(middleware.NewStoredSessionLoader(&middleware.StoredSessionLoaderOptions{
 		SessionStore:    sessionStore,
 		RefreshPeriod:   opts.Cookie.Refresh,
-		RefreshSession:  opts.GetProvider().RefreshSession,
-		ValidateSession: opts.GetProvider().ValidateSession,
+		RefreshSession:  provider.RefreshSession,
+		ValidateSession: provider.ValidateSession,
 	}))
 
 	return chain
@@ -437,9 +466,10 @@ func buildRoutesAllowlist(opts *options.Options) ([]allowedRoute, error) {
 		var (
 			method string
 			path   string
+			negate = strings.Contains(methodPath, "!=")
 		)
 
-		parts := strings.SplitN(methodPath, "=", 2)
+		parts := regexp.MustCompile("!?=").Split(methodPath, 2)
 		if len(parts) == 1 {
 			method = ""
 			path = parts[0]
@@ -455,6 +485,25 @@ func buildRoutesAllowlist(opts *options.Options) ([]allowedRoute, error) {
 		logger.Printf("Skipping auth - Method: %s | Path: %s", method, path)
 		routes = append(routes, allowedRoute{
 			method:    method,
+			negate:    negate,
+			pathRegex: compiledRegex,
+		})
+	}
+
+	return routes, nil
+}
+
+// buildAPIRoutes builds an []apiRoute from ApiRoutes option
+func buildAPIRoutes(opts *options.Options) ([]apiRoute, error) {
+	routes := make([]apiRoute, 0, len(opts.APIRoutes))
+
+	for _, path := range opts.APIRoutes {
+		compiledRegex, err := regexp.Compile(path)
+		if err != nil {
+			return nil, err
+		}
+		logger.Printf("API route - Path: %s", path)
+		routes = append(routes, apiRoute{
 			pathRegex: compiledRegex,
 		})
 	}
@@ -508,10 +557,33 @@ func (p *OAuthProxy) IsAllowedRequest(req *http.Request) bool {
 	return isPreflightRequestAllowed || p.isAllowedRoute(req) || p.isTrustedIP(req)
 }
 
+func isAllowedMethod(req *http.Request, route allowedRoute) bool {
+	return route.method == "" || req.Method == route.method
+}
+
+func isAllowedPath(req *http.Request, route allowedRoute) bool {
+	matches := route.pathRegex.MatchString(requestutil.GetRequestURI(req))
+
+	if route.negate {
+		return !matches
+	}
+
+	return matches
+}
+
 // IsAllowedRoute is used to check if the request method & path is allowed without auth
 func (p *OAuthProxy) isAllowedRoute(req *http.Request) bool {
 	for _, route := range p.allowedRoutes {
-		if (route.method == "" || req.Method == route.method) && route.pathRegex.MatchString(req.URL.Path) {
+		if isAllowedMethod(req, route) && isAllowedPath(req, route) {
+			return true
+		}
+	}
+	return false
+}
+
+func (p *OAuthProxy) isAPIPath(req *http.Request) bool {
+	for _, route := range p.apiRoutes {
+		if route.pathRegex.MatchString(requestutil.GetRequestURI(req)) {
 			return true
 		}
 	}
@@ -560,26 +632,26 @@ func (p *OAuthProxy) SignInPage(rw http.ResponseWriter, req *http.Request, code 
 		redirectURL = "/"
 	}
 
-	p.pageWriter.WriteSignInPage(rw, req, redirectURL)
+	p.pageWriter.WriteSignInPage(rw, req, redirectURL, code)
 }
 
 // ManualSignIn handles basic auth logins to the proxy
-func (p *OAuthProxy) ManualSignIn(req *http.Request) (string, bool) {
+func (p *OAuthProxy) ManualSignIn(req *http.Request) (string, bool, int) {
 	if req.Method != "POST" || p.basicAuthValidator == nil {
-		return "", false
+		return "", false, http.StatusOK
 	}
 	user := req.FormValue("username")
 	passwd := req.FormValue("password")
 	if user == "" {
-		return "", false
+		return "", false, http.StatusBadRequest
 	}
 	// check auth
 	if p.basicAuthValidator.Validate(user, passwd) {
 		logger.PrintAuthf(user, req, logger.AuthSuccess, "Authenticated via HtpasswdFile")
-		return user, true
+		return user, true, http.StatusOK
 	}
 	logger.PrintAuthf(user, req, logger.AuthFailure, "Invalid authentication via HtpasswdFile")
-	return "", false
+	return "", false, http.StatusUnauthorized
 }
 
 // SignIn serves a page prompting users to sign in
@@ -591,7 +663,7 @@ func (p *OAuthProxy) SignIn(rw http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	user, ok := p.ManualSignIn(req)
+	user, ok, statusCode := p.ManualSignIn(req)
 	if ok {
 		session := &sessionsapi.SessionState{User: user, Groups: p.basicAuthGroups}
 		err = p.SaveSession(rw, req, session)
@@ -605,7 +677,8 @@ func (p *OAuthProxy) SignIn(rw http.ResponseWriter, req *http.Request) {
 		if p.SkipProviderButton {
 			p.OAuthStart(rw, req)
 		} else {
-			p.SignInPage(rw, req, http.StatusOK)
+			// TODO - should we pass on /oauth2/sign_in query params to /oauth2/start?
+			p.SignInPage(rw, req, statusCode)
 		}
 	}
 }
@@ -665,9 +738,39 @@ func (p *OAuthProxy) SignOut(rw http.ResponseWriter, req *http.Request) {
 
 // OAuthStart starts the OAuth2 authentication flow
 func (p *OAuthProxy) OAuthStart(rw http.ResponseWriter, req *http.Request) {
+	// start the flow permitting login URL query parameters to be overridden from the request URL
+	p.doOAuthStart(rw, req, req.URL.Query())
+}
+
+func (p *OAuthProxy) doOAuthStart(rw http.ResponseWriter, req *http.Request, overrides url.Values) {
+	extraParams := p.provider.Data().LoginURLParams(overrides)
 	prepareNoCache(rw)
 
-	csrf, err := cookies.NewCSRF(p.CookieOptions)
+	var (
+		err                                              error
+		codeChallenge, codeVerifier, codeChallengeMethod string
+	)
+	if p.provider.Data().CodeChallengeMethod != "" {
+		codeChallengeMethod = p.provider.Data().CodeChallengeMethod
+		codeVerifier, err = encryption.GenerateRandomASCIIString(96)
+		if err != nil {
+			logger.Errorf("Unable to build random ASCII string for code verifier: %v", err)
+			p.ErrorPage(rw, req, http.StatusInternalServerError, err.Error())
+			return
+		}
+
+		codeChallenge, err = encryption.GenerateCodeChallenge(p.provider.Data().CodeChallengeMethod, codeVerifier)
+		if err != nil {
+			logger.Errorf("Error creating code challenge: %v", err)
+			p.ErrorPage(rw, req, http.StatusInternalServerError, err.Error())
+			return
+		}
+
+		extraParams.Add("code_challenge", codeChallenge)
+		extraParams.Add("code_challenge_method", codeChallengeMethod)
+	}
+
+	csrf, err := cookies.NewCSRF(p.CookieOptions, codeVerifier)
 	if err != nil {
 		logger.Errorf("Error creating CSRF nonce: %v", err)
 		p.ErrorPage(rw, req, http.StatusInternalServerError, err.Error())
@@ -677,7 +780,7 @@ func (p *OAuthProxy) OAuthStart(rw http.ResponseWriter, req *http.Request) {
 	appRedirect, err := p.appDirector.GetRedirect(req)
 	if err != nil {
 		logger.Errorf("Error obtaining application redirect: %v", err)
-		p.ErrorPage(rw, req, http.StatusInternalServerError, err.Error())
+		p.ErrorPage(rw, req, http.StatusBadRequest, err.Error())
 		return
 	}
 
@@ -686,6 +789,7 @@ func (p *OAuthProxy) OAuthStart(rw http.ResponseWriter, req *http.Request) {
 		callbackRedirect,
 		encodeState(csrf.HashOAuthState(), appRedirect),
 		csrf.HashOIDCNonce(),
+		extraParams,
 	)
 
 	if _, err := csrf.SetCookie(rw, req); err != nil {
@@ -718,7 +822,14 @@ func (p *OAuthProxy) OAuthCallback(rw http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	session, err := p.redeemCode(req)
+	csrf, err := cookies.LoadCSRFCookie(req, p.CookieOptions)
+	if err != nil {
+		logger.Println(req, logger.AuthFailure, "Invalid authentication via OAuth2: unable to obtain CSRF cookie")
+		p.ErrorPage(rw, req, http.StatusForbidden, err.Error(), "Login Failed: Unable to find a valid CSRF token. Please try again.")
+		return
+	}
+
+	session, err := p.redeemCode(req, csrf.GetCodeVerifier())
 	if err != nil {
 		logger.Errorf("Error redeeming code during OAuth2 callback: %v", err)
 		p.ErrorPage(rw, req, http.StatusInternalServerError, err.Error())
@@ -729,13 +840,6 @@ func (p *OAuthProxy) OAuthCallback(rw http.ResponseWriter, req *http.Request) {
 	if err != nil {
 		logger.Errorf("Error creating session during OAuth2 callback: %v", err)
 		p.ErrorPage(rw, req, http.StatusInternalServerError, err.Error())
-		return
-	}
-
-	csrf, err := cookies.LoadCSRFCookie(req, p.CookieOptions)
-	if err != nil {
-		logger.PrintAuthf(session.Email, req, logger.AuthFailure, "Invalid authentication via OAuth2: unable to obtain CSRF cookie")
-		p.ErrorPage(rw, req, http.StatusForbidden, err.Error(), "Login Failed: Unable to find a valid CSRF token. Please try again.")
 		return
 	}
 
@@ -785,14 +889,14 @@ func (p *OAuthProxy) OAuthCallback(rw http.ResponseWriter, req *http.Request) {
 	}
 }
 
-func (p *OAuthProxy) redeemCode(req *http.Request) (*sessionsapi.SessionState, error) {
+func (p *OAuthProxy) redeemCode(req *http.Request, codeVerifier string) (*sessionsapi.SessionState, error) {
 	code := req.Form.Get("code")
 	if code == "" {
 		return nil, providers.ErrMissingCode
 	}
 
 	redirectURI := p.getOAuthRedirectURI(req)
-	s, err := p.provider.Redeem(req.Context(), redirectURI, code)
+	s, err := p.provider.Redeem(req.Context(), redirectURI, code, codeVerifier)
 	if err != nil {
 		return nil, err
 	}
@@ -856,7 +960,7 @@ func (p *OAuthProxy) Proxy(rw http.ResponseWriter, req *http.Request) {
 		p.headersChain.Then(p.upstreamProxy).ServeHTTP(rw, req)
 	case ErrNeedsLogin:
 		// we need to send the user to a login screen
-		if p.forceJSONErrors || isAjax(req) {
+		if p.forceJSONErrors || isAjax(req) || p.isAPIPath(req) {
 			logger.Printf("No valid authentication in request. Access Denied.")
 			// no point redirecting an AJAX request
 			p.errorJSON(rw, http.StatusUnauthorized)
@@ -865,7 +969,10 @@ func (p *OAuthProxy) Proxy(rw http.ResponseWriter, req *http.Request) {
 
 		logger.Printf("No valid authentication in request. Initiating login.")
 		if p.SkipProviderButton {
-			p.OAuthStart(rw, req)
+			// start OAuth flow, but only with the default login URL params - do not
+			// consider this request's query params as potential overrides, since
+			// the user did not explicitly start the login flow
+			p.doOAuthStart(rw, req, nil)
 		} else {
 			p.SignInPage(rw, req, http.StatusForbidden)
 		}
@@ -957,7 +1064,12 @@ func (p *OAuthProxy) getAuthenticatedSession(rw http.ResponseWriter, req *http.R
 	}
 
 	if invalidEmail || !authorized {
-		logger.PrintAuthf(session.Email, req, logger.AuthFailure, "Invalid authorization via session: removing session %s", session)
+		cause := "unauthorized"
+		if invalidEmail {
+			cause = "invalid email"
+		}
+
+		logger.PrintAuthf(session.Email, req, logger.AuthFailure, "Invalid authorization via session (%s): removing session %s", cause, session)
 		// Invalid session, clear it
 		err := p.ClearSessionCookie(rw, req)
 		if err != nil {
@@ -971,23 +1083,73 @@ func (p *OAuthProxy) getAuthenticatedSession(rw http.ResponseWriter, req *http.R
 
 // authOnlyAuthorize handles special authorization logic that is only done
 // on the AuthOnly endpoint for use with Nginx subrequest architectures.
-//
-// TODO (@NickMeves): This method is a placeholder to be extended but currently
-// fails the linter. Remove the nolint when functionality expands.
-//
-//nolint:gosimple
 func authOnlyAuthorize(req *http.Request, s *sessionsapi.SessionState) bool {
-	// Allow secondary group restrictions based on the `allowed_groups`
-	// querystring parameter
-	if !checkAllowedGroups(req, s) {
-		return false
+	// Allow requests previously allowed to be bypassed
+	if s == nil {
+		return true
+	}
+
+	constraints := []func(*http.Request, *sessionsapi.SessionState) bool{
+		checkAllowedGroups,
+		checkAllowedEmailDomains,
+		checkAllowedEmails,
+	}
+
+	for _, constraint := range constraints {
+		if !constraint(req, s) {
+			return false
+		}
 	}
 
 	return true
 }
 
+// extractAllowedEntities aims to extract and split allowed entities linked by a key,
+// from an HTTP request query. Output is a map[string]struct{} where keys are valuable,
+// the goal is to avoid time complexity O(N^2) while finding matches during membership checks.
+func extractAllowedEntities(req *http.Request, key string) map[string]struct{} {
+	entities := map[string]struct{}{}
+
+	query := req.URL.Query()
+	for _, allowedEntities := range query[key] {
+		for _, entity := range strings.Split(allowedEntities, ",") {
+			if entity != "" {
+				entities[entity] = struct{}{}
+			}
+		}
+	}
+
+	return entities
+}
+
+// checkAllowedEmailDomains allow email domain restrictions based on the `allowed_email_domains`
+// querystring parameter
+func checkAllowedEmailDomains(req *http.Request, s *sessionsapi.SessionState) bool {
+	allowedEmailDomains := extractAllowedEntities(req, "allowed_email_domains")
+	if len(allowedEmailDomains) == 0 {
+		return true
+	}
+
+	splitEmail := strings.Split(s.Email, "@")
+	if len(splitEmail) != 2 {
+		return false
+	}
+
+	endpoint, _ := url.Parse("")
+	endpoint.Host = splitEmail[1]
+
+	allowedEmailDomainsList := []string{}
+	for ed := range allowedEmailDomains {
+		allowedEmailDomainsList = append(allowedEmailDomainsList, ed)
+	}
+
+	return util.IsEndpointAllowed(endpoint, allowedEmailDomainsList)
+}
+
+// checkAllowedGroups allow secondary group restrictions based on the `allowed_groups`
+// querystring parameter
 func checkAllowedGroups(req *http.Request, s *sessionsapi.SessionState) bool {
-	allowedGroups := extractAllowedGroups(req)
+	allowedGroups := extractAllowedEntities(req, "allowed_groups")
 	if len(allowedGroups) == 0 {
 		return true
 	}
@@ -1001,19 +1163,24 @@ func checkAllowedGroups(req *http.Request, s *sessionsapi.SessionState) bool {
 	return false
 }
 
-func extractAllowedGroups(req *http.Request) map[string]struct{} {
-	groups := map[string]struct{}{}
+// checkAllowedEmails allow email restrictions based on the `allowed_emails`
+// querystring parameter
+func checkAllowedEmails(req *http.Request, s *sessionsapi.SessionState) bool {
+	allowedEmails := extractAllowedEntities(req, "allowed_emails")
+	if len(allowedEmails) == 0 {
+		return true
+	}
 
-	query := req.URL.Query()
-	for _, allowedGroups := range query["allowed_groups"] {
-		for _, group := range strings.Split(allowedGroups, ",") {
-			if group != "" {
-				groups[group] = struct{}{}
-			}
+	allowed := false
+
+	for email := range allowedEmails {
+		if email == s.Email {
+			allowed = true
+			break
 		}
 	}
 
-	return groups
+	return allowed
 }
 
 // encodedState builds the OAuth state param out of our nonce and

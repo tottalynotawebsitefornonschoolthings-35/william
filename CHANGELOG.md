@@ -6,6 +6,169 @@
 
 ## Breaking Changes
 
+## Changes since v7.5.0
+- [#2220](https://github.com/oauth2-proxy/oauth2-proxy/pull/2220) Added binary and docker release platforms (@kvanzuijlen)
+- [#2221](https://github.com/oauth2-proxy/oauth2-proxy/pull/2221) Backwards compatible fix for wrong environment variable name (OAUTH2_PROXY_GOOGLE_GROUPS) (@kvanzuijlen)
+- [#1989](https://github.com/oauth2-proxy/oauth2-proxy/pull/1989) Fix default scope for keycloak-oidc provider
+- [#2217](https://github.com/oauth2-proxy/oauth2-proxy/pull/2217) Upgrade alpine to version 3.18 (@polarctos)
+
+# V7.5.0
+
+## Release Highlights
+- 🐛 Several bugs have been squashed
+- 🕵️‍♀️ Vulnerabilities have been addressed
+- ⭐️ Added a readiness endpoint to check if the application is ready to receive traffic
+- ⭐️ Google Application Default Credentials support (i.e. for running on Google Cloud Platform)
+- ⭐ Session cookie support
+
+## Important Notes
+
+- This release includes fixes for a number of CVEs, we recommend to upgrade as soon as possible.
+
+## Breaking Changes
+
+N/A
+
+## Changes since v7.4.0
+- [#2028](https://github.com/oauth2-proxy/oauth2-proxy/pull/2028) Update golang.org/x/net to v0.7.0 ato address GHSA-vvpx-j8f3-3w6h (@amrmahdi)
+- [#2133](https://github.com/oauth2-proxy/oauth2-proxy/pull/2133) Use X-Forwarded-Uri if it exists for pathRegex match (@mzndr)
+- [#1873](https://github.com/oauth2-proxy/oauth2-proxy/pull/1873) Fix empty users with some OIDC providers (@babs)
+- [#1882](https://github.com/oauth2-proxy/oauth2-proxy/pull/1882) Make `htpasswd.GetUsers` racecondition safe (@babs)
+- [#1883](https://github.com/oauth2-proxy/oauth2-proxy/pull/1883) Ensure v8 manifest variant is set on docker images (@braunsonm)
+- [#1906](https://github.com/oauth2-proxy/oauth2-proxy/pull/1906) Fix PKCE code verifier generation to never use UTF-8 characters (@braunsonm)
+- [#1839](https://github.com/oauth2-proxy/oauth2-proxy/pull/1839) Add readiness checks for deeper health checks (@kobim)
+- [#1927](https://github.com/oauth2-proxy/oauth2-proxy/pull/1927) Fix default scope settings for none oidc providers (@tuunit)
+- [#1713](https://github.com/oauth2-proxy/oauth2-proxy/pull/1713) Add session cookie support (@t-katsumura @tanuki884)
+- [#1951](https://github.com/oauth2-proxy/oauth2-proxy/pull/1951) Fix validate URL, check if query string marker (?) or separator (&) needs to be appended (@miguelborges99)
+- [#1920](https://github.com/oauth2-proxy/oauth2-proxy/pull/1920) Make sure emailClaim is not overriden if userIDClaim is not set (@mdreem)
+- [#2010](https://github.com/oauth2-proxy/oauth2-proxy/pull/2010) Log the difference between invalid email and not authorized session (@omBratteng)
+- [#1988](https://github.com/oauth2-proxy/oauth2-proxy/pull/1988) Ensure sign-in page background is uniform throughout the page (@corybolar)
+- [#2013](https://github.com/oauth2-proxy/oauth2-proxy/pull/2013) Upgrade alpine to version 3.17.2 and library dependencies (@miguelborges99)
+- [#2047](https://github.com/oauth2-proxy/oauth2-proxy/pull/2047) CVE-2022-41717: DoS in Go net/http may lead to DoS (@miguelborges99)
+- [#2126](https://github.com/oauth2-proxy/oauth2-proxy/pull/2126) Added support for GKE Workload Identity (@kvanzuijlen)
+- [#1921](https://github.com/oauth2-proxy/oauth2-proxy/pull/1921) Check jsonpath syntax before interpretation (@eloo-abi)
+- [#2025](https://github.com/oauth2-proxy/oauth2-proxy/pull/2025) Embed static stylesheets and dependencies (@corybolar)
+
+# V7.4.0
+
+## Release Highlights
+
+- New Azure groups support for Azure OAuth2 v2.0
+- Option to configure API routes - paths that will not redirect to login when unauthenticated
+- CSRF and session cookies now have different timeouts
+
+## Important Notes
+
+- [#1708](https://github.com/oauth2-proxy/oauth2-proxy/pull/1708) Enable different CSRF cookies per request (@miguelborges99)
+  - Since the CSRF cookie name is now longer it could potentially break long cookie names (around 1000 characters).
+  - Having a unique CSRF cookie per request can lead to quite a number of cookies, in case an application performs a high number of parallel authentication requests. Each call will redirect to /oauth2/start, if the user is not authenticated, and a new cookie will be set. The successfully authenticated requests will have its CSRF cookies immediatly expired, however the failed ones will mantain its CSRF cookies until they expire (by default in 15 minutes).
+  - The user may redefine the CSRF cookie expiration time using flag "--cookie-csrf-expire" (e.g. --cookie-csrf-expire=5m). By default, it is 15 minutes, but you can fine tune to your environment.
+- [#1574](https://github.com/oauth2-proxy/oauth2-proxy/pull/1574) Add Azure groups support and Azure OAuth v2.0 (@adriananeci)
+  - group membership check is now validated while using the the azure provider.
+  - Azure OAuth v2.0 (https://login.microsoftonline.com/{tenant_id}/v2.0) is now available along with Azure OAuth v1.0. See https://github.com/oauth2-proxy/oauth2-proxy/blob/master/docs/docs/configuration/auth.md#azure-auth-provider for more details
+  - When using v2.0 Azure Auth endpoint (`https://login.microsoftonline.com/{tenant-id}/v2.0`) as `--oidc_issuer_url`, in conjunction with `--resource` flag, be sure to append `/.default` at the end of the resource name. See https://docs.microsoft.com/en-us/azure/active-directory/develop/v2-permissions-and-consent#the-default-scope for more details.
+- This release includes fixes for a number of CVEs, we recommend to upgrade as soon as possible.
+
+## Breaking Changes
+
+N/A
+
+## Changes since v7.3.0
+
+- [#1862](https://github.com/oauth2-proxy/oauth2-proxy/pull/1862) Update dependencies (@JoelSpeed)
+- [#1828](https://github.com/oauth2-proxy/oauth2-proxy/pull/1828) call providerData.setProviderDefaults for oidc provider to achieve consistent behaviour (@centzilius)
+  - UserClaim will be set to sub instead of beeing empty from now on.
+- [#1691](https://github.com/oauth2-proxy/oauth2-proxy/pull/1691) Fix Redis IdleTimeout when Redis timeout option is set to non-zero (@dimss)
+- [#1669](https://github.com/oauth2-proxy/oauth2-proxy/pull/1699) Fix method deprecated error in lint (@t-katsumura)
+- [#1701](https://github.com/oauth2-proxy/oauth2-proxy/pull/1701) Watch the htpasswd file for changes and update the htpasswdMap (@aiciobanu)
+- [#1709](https://github.com/oauth2-proxy/oauth2-proxy/pull/1709) Show an alert message when basic auth credentials are invalid (@aiciobanu)
+- [#1723](https://github.com/oauth2-proxy/oauth2-proxy/pull/1723) Added ability to specify allowed TLS cipher suites. (@crbednarz)
+- [#1720](https://github.com/oauth2-proxy/oauth2-proxy/pull/1720) Extract roles from authToken, to allow using allowed roles with Keycloak. (@MrDeerly )
+- [#1774](https://github.com/oauth2-proxy/oauth2-proxy/pull/1774) Fix vulnerabilities CVE-2022-27191, CVE-2021-44716 and CVE-2022-29526. (@felipeconti)
+- [#1667](https://github.com/oauth2-proxy/oauth2-proxy/issues/1667) Rename configuration file flag for PKCE (@ChrisEke)
+to remain consistent with CLI flags. You should specify `code_challenge_method` in your configuration instead of
+`force_code_challenge_method`.
+- [#1708](https://github.com/oauth2-proxy/oauth2-proxy/pull/1708) Enable different CSRF cookies per request (@miguelborges99)
+  - Add flag "--cookie-csrf-per-request" which activates an algorithm to name CSRF cookies differently per request.
+    This feature allows parallel callbacks and by default it is disabled.
+  - Add flag "--cookie-csrf-expire" to define a different expiration time for the CSRF cookie. By default, it is 15 minutes.
+- [#1762](https://github.com/oauth2-proxy/oauth2-proxy/pull/1762) Support negating for skip auth routes (@ianldge)
+- [#1788](https://github.com/oauth2-proxy/oauth2-proxy/pull/1788) Update base docker image to alpine 3.16 (@tooptoop4)
+- [#1760](https://github.com/oauth2-proxy/oauth2-proxy/pull/1760) Option to configure API routes (@segfault16)
+- [#1825](https://github.com/oauth2-proxy/oauth2-proxy/pull/1825) Fix vulnerabilities CVE-2022-32149 and CVE-2022-27664. (@crbednarz)
+- [#1750](https://github.com/oauth2-proxy/oauth2-proxy/pull/1750) Fix Nextcloud provider (@n1tehawk)
+- [#1574](https://github.com/oauth2-proxy/oauth2-proxy/pull/1574) Add Azure groups support and Azure OAuth v2.0 (@adriananeci)
+- [#1851](https://github.com/oauth2-proxy/oauth2-proxy/pull/1851) Bump golang to 1.19 and min allowed version to 1.18 (@adriananeci)
+- [#1815](https://github.com/oauth2-proxy/oauth2-proxy/pull/1815) Keycloak: save user and preferredUsername in session to populate headers for the backend (@babs)
+- [#1847](https://github.com/oauth2-proxy/oauth2-proxy/pull/1847) Update go-redis/redis to v9 (@arhamGH)
+-
+# V7.3.0
+
+## Release Highlights
+
+- [#1361](https://github.com/oauth2-proxy/oauth2-proxy/pull/1541) PKCE Code Challenge Support - RFC-7636 (@braunsonm)
+  - At this time the `--code-challenge-method` flag can be used to enable it with the method of your choice.
+- Parital support for OAuth2 Authorization Server Metadata for detecting code challenge methods (@braunsonm)
+  - A warning will be displayed when your provider advertises support for PKCE but you have not enabled it.
+- Support for the ARMv8 and ppc64le architectures
+- Configurable upstream request timeouts
+
+## Important Notes
+
+- [oauth2-proxy](https://quay.io/repository/oauth2-proxy/oauth2-proxy?tab=tags&tag=latest) separate image tags for each architecture is deprecated. Instead, images are cross compiled and pushed as the same tag for every platform.
+If you are using an architecture specific tag (ex: v7.2.1-arm64) you should move to the generic tag instead (ex: v7.2.1 )
+- [#1478](https://github.com/oauth2-proxy/oauth2-proxy/pull/1478) Changes the UID and GID of the runtime user to `65532`.
+  Which also is known as `nonroot` user in [distroless images](https://github.com/GoogleContainerTools/distroless).
+- This release includes fixes for a number of CVEs, we recomend to upgrade as soon as possible.
+
+## Breaking Changes
+
+- [#1666](https://github.com/oauth2-proxy/oauth2-proxy/issues/1666) Azure provider breaks after upgrading to this version. Please see the issue for more details.
+
+## Changes since v7.2.1
+
+- [#1662](https://github.com/oauth2-proxy/oauth2-proxy/pull/1662) Discover signature algorithms from OIDC provider (@JoelSpeed)
+- [#1651](https://github.com/oauth2-proxy/oauth2-proxy/pull/1651) Updated go-lang's text, crypto and prometheus dependencies to fix reported security vulnerabilities. (@rkkris75)
+- [#1595](https://github.com/oauth2-proxy/oauth2-proxy/pull/1595) Add optional `allowed_emails` query parameter to the `auth_request`. (@zv0n)
+- [#1478](https://github.com/oauth2-proxy/oauth2-proxy/pull/1478) Parameterise the runtime image (@omBratteng)
+- [#1583](https://github.com/oauth2-proxy/oauth2-proxy/pull/1583) Add groups to session too when creating session from bearer token (@adriananeci)
+- [#1418](https://github.com/oauth2-proxy/oauth2-proxy/pull/1418) Support for passing arbitrary query parameters through from `/oauth2/start` to the identity provider's login URL. Configuration settings control which parameters are passed by default and precisely which values can be overridden per-request (@ianroberts)
+- [#1559](https://github.com/oauth2-proxy/oauth2-proxy/pull/1559) Introduce ProviderVerifier to clean up OIDC discovery code (@JoelSpeed)
+- [#1561](https://github.com/oauth2-proxy/oauth2-proxy/pull/1561) Add ppc64le support (@mgiessing)
+- [#1563](https://github.com/oauth2-proxy/oauth2-proxy/pull/1563) Ensure claim extractor does not attempt profile call when URL is empty (@JoelSpeed)
+- [#1560](https://github.com/oauth2-proxy/oauth2-proxy/pull/1560) Fix provider data initialisation (@JoelSpeed)
+- [#1555](https://github.com/oauth2-proxy/oauth2-proxy/pull/1555) Refactor provider configuration into providers package (@JoelSpeed)
+- [#1394](https://github.com/oauth2-proxy/oauth2-proxy/pull/1394) Add generic claim extractor to get claims from ID Tokens (@JoelSpeed)
+- [#1468](https://github.com/oauth2-proxy/oauth2-proxy/pull/1468) Implement session locking with session state lock (@JoelSpeed, @Bibob7)
+- [#1489](https://github.com/oauth2-proxy/oauth2-proxy/pull/1489) Fix Docker Buildx push to include build version (@JoelSpeed)
+- [#1477](https://github.com/oauth2-proxy/oauth2-proxy/pull/1477) Remove provider documentation for `Microsoft Azure AD` (@omBratteng)
+- [#1204](https://github.com/oauth2-proxy/oauth2-proxy/pull/1204) Added configuration for audience claim (`--oidc-extra-audience`) and ability to specify extra audiences (`--oidc-extra-audience`) allowed passing audience verification. This enables support for AWS Cognito and other issuers that have custom audience claims. Also, this adds the ability to allow multiple audiences. (@kschu91)
+- [#1509](https://github.com/oauth2-proxy/oauth2-proxy/pull/1509) Update LoginGovProvider ValidateSession to pass access_token in Header (@pksheldon4)
+- [#1474](https://github.com/oauth2-proxy/oauth2-proxy/pull/1474) Support configuration of minimal acceptable TLS version (@polarctos)
+- [#1545](https://github.com/oauth2-proxy/oauth2-proxy/pull/1545) Fix issue with query string allowed group panic on skip methods (@andytson)
+- [#1286](https://github.com/oauth2-proxy/oauth2-proxy/pull/1286) Add the `allowed_email_domains` and the `allowed_groups` on the `auth_request` + support standard wildcard char for validation with sub-domain and email-domain. (@w3st3ry @armandpicard)
+- [#1361](https://github.com/oauth2-proxy/oauth2-proxy/pull/1541) PKCE Code Challenge Support - RFC-7636 (@braunsonm)
+- [#1594](https://github.com/oauth2-proxy/oauth2-proxy/pull/1594) Release ARMv8 docker images (@braunsonm)
+- [#1649](https://github.com/oauth2-proxy/oauth2-proxy/pull/1649) Return a 400 instead of a 500 when a request contains an invalid redirect target (@niksko)
+- [#1638](https://github.com/oauth2-proxy/oauth2-proxy/pull/1638) Implement configurable upstream timeout (@jacksgt)
+- [#1650](https://github.com/oauth2-proxy/oauth2-proxy/pull/1650) Fixed 500 when checking if user has repo (@adamsong)
+- [#1635](https://github.com/oauth2-proxy/oauth2-proxy/pull/1635) Added description and unit tests for ipv6 address (@t-katsumura)
+- [#1502](https://github.com/oauth2-proxy/oauth2-proxy/pull/1502) Unbreak oauth2-proxy for keycloak provider after 2c668a (@ckwalsh)
+
+# V7.2.1
+
+## Release Highlights
+
+This release contains a number of bug and security fixes, but has no feature additions.
+
+## Important Notes
+
+N/A
+
+## Breaking Changes
+
+N/A
+
 ## Changes since v7.2.0
 
 - [#1247](https://github.com/oauth2-proxy/oauth2-proxy/pull/1247) Use `upn` claim consistently in ADFSProvider (@NickMeves)
@@ -13,6 +176,8 @@
 - [#1433](https://github.com/oauth2-proxy/oauth2-proxy/pull/1433) Let authentication fail when session validation fails (@stippi2)
 - [#1445](https://github.com/oauth2-proxy/oauth2-proxy/pull/1445) Fix docker container multi arch build issue by passing GOARCH details to make build (@jkandasa)
 - [#1444](https://github.com/oauth2-proxy/oauth2-proxy/pull/1444) Update LinkedIn provider validate URL (@jkandasa)
+- [#1471](https://github.com/oauth2-proxy/oauth2-proxy/pull/1471) Update alpine to 3.15 (@AlexanderBabel)
+- [#1479](https://github.com/oauth2-proxy/oauth2-proxy/pull/1479) Update to Go 1.17 (@polarctos)
 
 # V7.2.0
 

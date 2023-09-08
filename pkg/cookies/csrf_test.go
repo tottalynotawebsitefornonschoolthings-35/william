@@ -23,17 +23,19 @@ var _ = Describe("CSRF Cookie Tests", func() {
 
 	BeforeEach(func() {
 		cookieOpts = &options.Cookie{
-			Name:     cookieName,
-			Secret:   cookieSecret,
-			Domains:  []string{cookieDomain},
-			Path:     cookiePath,
-			Expire:   time.Hour,
-			Secure:   true,
-			HTTPOnly: true,
+			Name:           cookieName,
+			Secret:         cookieSecret,
+			Domains:        []string{cookieDomain},
+			Path:           cookiePath,
+			Expire:         time.Hour,
+			Secure:         true,
+			HTTPOnly:       true,
+			CSRFPerRequest: false,
+			CSRFExpire:     time.Hour,
 		}
 
 		var err error
-		publicCSRF, err = NewCSRF(cookieOpts)
+		publicCSRF, err = NewCSRF(cookieOpts, "verifier")
 		Expect(err).ToNot(HaveOccurred())
 
 		privateCSRF = publicCSRF.(*csrf)
@@ -44,14 +46,16 @@ var _ = Describe("CSRF Cookie Tests", func() {
 			Expect(privateCSRF.OAuthState).ToNot(BeEmpty())
 			Expect(privateCSRF.OIDCNonce).ToNot(BeEmpty())
 			Expect(privateCSRF.OAuthState).ToNot(Equal(privateCSRF.OIDCNonce))
+			Expect(privateCSRF.CodeVerifier).To(Equal("verifier"))
 		})
 
 		It("makes unique nonces between multiple CSRFs", func() {
-			other, err := NewCSRF(cookieOpts)
+			other, err := NewCSRF(cookieOpts, "verifier")
 			Expect(err).ToNot(HaveOccurred())
 
 			Expect(privateCSRF.OAuthState).ToNot(Equal(other.(*csrf).OAuthState))
 			Expect(privateCSRF.OIDCNonce).ToNot(Equal(other.(*csrf).OIDCNonce))
+			Expect(privateCSRF.CodeVerifier).To(Equal("verifier"))
 		})
 	})
 
@@ -72,6 +76,7 @@ var _ = Describe("CSRF Cookie Tests", func() {
 			Expect(publicCSRF.CheckOIDCNonce(csrfNonce + csrfState)).To(BeFalse())
 			Expect(publicCSRF.CheckOAuthState("")).To(BeFalse())
 			Expect(publicCSRF.CheckOIDCNonce("")).To(BeFalse())
+			Expect(publicCSRF.GetCodeVerifier()).To(Equal("verifier"))
 		})
 	})
 
@@ -157,7 +162,7 @@ var _ = Describe("CSRF Cookie Tests", func() {
 						"; Path=%s; Domain=%s; Expires=%s; HttpOnly; Secure",
 						cookiePath,
 						cookieDomain,
-						testCookieExpires(testNow.Add(cookieOpts.Expire)),
+						testCookieExpires(testNow.Add(cookieOpts.CSRFExpire)),
 					),
 				))
 			})

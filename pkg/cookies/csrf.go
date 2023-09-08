@@ -10,7 +10,7 @@ import (
 	"github.com/oauth2-proxy/oauth2-proxy/v7/pkg/apis/sessions"
 	"github.com/oauth2-proxy/oauth2-proxy/v7/pkg/clock"
 	"github.com/oauth2-proxy/oauth2-proxy/v7/pkg/encryption"
-	"github.com/vmihailenco/msgpack/v4"
+	"github.com/vmihailenco/msgpack/v5"
 )
 
 // CSRF manages various nonces stored in the CSRF cookie during the initial
@@ -20,6 +20,7 @@ type CSRF interface {
 	HashOIDCNonce() string
 	CheckOAuthState(string) bool
 	CheckOIDCNonce(string) bool
+	GetCodeVerifier() string
 
 	SetSessionNonce(s *sessions.SessionState)
 
@@ -38,24 +39,33 @@ type csrf struct {
 	// is used to mitigate replay attacks.
 	OIDCNonce []byte `msgpack:"n,omitempty"`
 
+	// CodeVerifier holds the unobfuscated PKCE code verification string
+	// which is used to compare the code challenge when exchanging the
+	// authentication code.
+	CodeVerifier string `msgpack:"cv,omitempty"`
+
 	cookieOpts *options.Cookie
 	time       clock.Clock
 }
 
+// csrtStateTrim will indicate the length of the state trimmed for the name of the csrf cookie
+const csrfStateLength int = 9
+
 // NewCSRF creates a CSRF with random nonces
-func NewCSRF(opts *options.Cookie) (CSRF, error) {
-	state, err := encryption.Nonce()
+func NewCSRF(opts *options.Cookie, codeVerifier string) (CSRF, error) {
+	state, err := encryption.Nonce(32)
 	if err != nil {
 		return nil, err
 	}
-	nonce, err := encryption.Nonce()
+	nonce, err := encryption.Nonce(32)
 	if err != nil {
 		return nil, err
 	}
 
 	return &csrf{
-		OAuthState: state,
-		OIDCNonce:  nonce,
+		OAuthState:   state,
+		OIDCNonce:    nonce,
+		CodeVerifier: codeVerifier,
 
 		cookieOpts: opts,
 	}, nil
@@ -63,12 +73,31 @@ func NewCSRF(opts *options.Cookie) (CSRF, error) {
 
 // LoadCSRFCookie loads a CSRF object from a request's CSRF cookie
 func LoadCSRFCookie(req *http.Request, opts *options.Cookie) (CSRF, error) {
-	cookie, err := req.Cookie(csrfCookieName(opts))
+
+	cookieName := GenerateCookieName(req, opts)
+
+	cookie, err := req.Cookie(cookieName)
 	if err != nil {
 		return nil, err
 	}
 
 	return decodeCSRFCookie(cookie, opts)
+}
+
+// GenerateCookieName in case cookie options state that CSRF cookie has fixed name then set fixed name, otherwise
+// build name based on the state
+func GenerateCookieName(req *http.Request, opts *options.Cookie) string {
+	stateSubstring := ""
+	if opts.CSRFPerRequest {
+		// csrfCookieName will include a substring of the state to enable multiple csrf cookies
+		// in case of parallel requests
+		stateSubstring = ExtractStateSubstring(req)
+	}
+	return csrfCookieName(opts, stateSubstring)
+}
+
+func (c *csrf) GetCodeVerifier() string {
+	return c.CodeVerifier
 }
 
 // HashOAuthState returns the hash of the OAuth state nonce
@@ -109,7 +138,7 @@ func (c *csrf) SetCookie(rw http.ResponseWriter, req *http.Request) (*http.Cooki
 		c.cookieName(),
 		encoded,
 		c.cookieOpts,
-		c.cookieOpts.Expire,
+		c.cookieOpts.CSRFExpire,
 		c.time.Now(),
 	)
 	http.SetCookie(rw, cookie)
@@ -168,14 +197,35 @@ func decodeCSRFCookie(cookie *http.Cookie, opts *options.Cookie) (*csrf, error) 
 	return csrf, nil
 }
 
-// cookieName returns the CSRF cookie's name derived from the base
-// session cookie name
+// cookieName returns the CSRF cookie's name
 func (c *csrf) cookieName() string {
-	return csrfCookieName(c.cookieOpts)
+	stateSubstring := ""
+	if c.cookieOpts.CSRFPerRequest {
+		stateSubstring = encryption.HashNonce(c.OAuthState)[0 : csrfStateLength-1]
+	}
+	return csrfCookieName(c.cookieOpts, stateSubstring)
 }
 
-func csrfCookieName(opts *options.Cookie) string {
-	return fmt.Sprintf("%v_csrf", opts.Name)
+func csrfCookieName(opts *options.Cookie, stateSubstring string) string {
+	if stateSubstring == "" {
+		return fmt.Sprintf("%v_csrf", opts.Name)
+	}
+	return fmt.Sprintf("%v_csrf_%v", opts.Name, stateSubstring)
+}
+
+// ExtractStateSubstring extract the initial state characters, to add it to the CSRF cookie name
+func ExtractStateSubstring(req *http.Request) string {
+	lastChar := csrfStateLength - 1
+	stateSubstring := ""
+
+	state := req.URL.Query()["state"]
+	if state[0] != "" {
+		state := state[0]
+		if lastChar <= len(state) {
+			stateSubstring = state[0:lastChar]
+		}
+	}
+	return stateSubstring
 }
 
 func encrypt(data []byte, opts *options.Cookie) ([]byte, error) {
