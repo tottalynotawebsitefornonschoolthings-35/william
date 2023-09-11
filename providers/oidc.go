@@ -101,7 +101,7 @@ func (p *OIDCProvider) EnrichSession(_ context.Context, s *sessions.SessionState
 	return nil
 }
 
-// ValidateSession checks that the session's id_token or access_token (then a ValidateURL is configured) is still valid
+// ValidateSession checks that the session's id_token or access_token (when a ValidateURL is configured) is still valid
 func (p *OIDCProvider) ValidateSession(ctx context.Context, s *sessions.SessionState) bool {
 	valid := false
 	// verify session using AccessToken and ValidateURL when set
