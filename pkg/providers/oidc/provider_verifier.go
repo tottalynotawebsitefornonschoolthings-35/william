@@ -7,9 +7,10 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"os"
+
 	"github.com/coreos/go-oidc/v3/oidc"
 	k8serrors "k8s.io/apimachinery/pkg/util/errors"
-	"os"
 )
 
 // ProviderVerifier represents the OIDC discovery and verification process
@@ -175,7 +176,7 @@ func getPublicKeyFromBytes(bytes []byte) (crypto.PublicKey, error) {
 
 // newKeySetFromStatic create a StaticKeySet from a set of files
 func newKeySetFromStatic(keys []string) (*oidc.StaticKeySet, error) {
-	var keySet []crypto.PublicKey
+	keySet := []crypto.PublicKey{}
 	for _, keyFile := range keys {
 		bytes, err := os.ReadFile(keyFile)
 		if err != nil {
