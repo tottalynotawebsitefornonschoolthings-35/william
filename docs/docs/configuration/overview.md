@@ -175,7 +175,7 @@ An example [oauth2-proxy.cfg](https://github.com/oauth2-proxy/oauth2-proxy/blob/
 | `--request-logging-format` | string | Template for request log lines | see [Logging Configuration](#logging-configuration) |
 | `--resource` | string | The resource that is protected (Azure AD only) | |
 | `--reverse-proxy` | bool | are we running behind a reverse proxy, controls whether headers like X-Real-IP are accepted and allows X-Forwarded-{Proto,Host,Uri} headers to be used on redirect selection | false |
-| `--scope` | string | OAuth scope specification | |
+| `--scope` | string | OAuth scope specification | `openid email profile` |
 | `--session-cookie-minimal` | bool | strip OAuth tokens from cookie session stores if they aren't needed (cookie session store only) | false |
 | `--session-store-type` | string | [Session data storage backend](sessions.md); redis or cookie | cookie |
 | `--set-xauthrequest` | bool | set X-Auth-Request-User, X-Auth-Request-Groups, X-Auth-Request-Email and X-Auth-Request-Preferred-Username response headers (useful in Nginx auth_request mode). When used with `--pass-access-token`, X-Auth-Request-Access-Token is added to response headers. | false |

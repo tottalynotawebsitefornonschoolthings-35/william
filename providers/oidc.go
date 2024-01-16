@@ -39,10 +39,6 @@ func NewOIDCProvider(p *ProviderData, opts options.OIDCOptions) *OIDCProvider {
 		scope:       oidcDefaultScope,
 	}
 
-	if len(p.AllowedGroups) > 0 {
-		oidcProviderDefaults.scope += " groups"
-	}
-
 	p.setProviderDefaults(oidcProviderDefaults)
 	p.getAuthorizationHeaderFunc = makeOIDCHeader
 

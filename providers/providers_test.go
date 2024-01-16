@@ -137,13 +137,6 @@ func TestScope(t *testing.T) {
 			expectedScope:   "openid email profile",
 		},
 		{
-			name:            "oidc: with no scope provided and groups",
-			configuredType:  "oidc",
-			configuredScope: "",
-			expectedScope:   "openid email profile groups",
-			allowedGroups:   []string{"foo"},
-		},
-		{
 			name:            "oidc: with a configured scope provided",
 			configuredType:  "oidc",
 			configuredScope: "openid",
