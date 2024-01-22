@@ -50,11 +50,21 @@ It's recommended to refresh sessions on a short interval (1h) with `cookie-refre
 
 #### Restrict auth to specific Google groups on your domain. (optional)
 
-1.  Create a service account: https://developers.google.com/identity/protocols/OAuth2ServiceAccount and make sure to download the json file.
+1.  Create a [service account](https://developers.google.com/identity/protocols/OAuth2ServiceAccount) and download the json 
+file if you're not using [Application Default Credentials / Workload Identity / Workload Identity Federation (recommended)](#using-application-default-credentials-adc--workload-identity--workload-identity-federation-recommended).
 2.  Make note of the Client ID for a future step.
 3.  Under "APIs & Auth", choose APIs.
 4.  Click on Admin SDK and then Enable API.
 5.  Follow the steps on https://developers.google.com/admin-sdk/directory/v1/guides/delegation#delegate_domain-wide_authority_to_your_service_account and give the client id from step 2 the following oauth scopes:
+
+
+##### Using Application Default Credentials (ADC) / Workload Identity / Workload Identity Federation (recommended)
+oauth2-proxy can make use of [Application Default Credentials](https://cloud.google.com/docs/authentication/application-default-credentials).
+When deployed within GCP, this means that it can automatically use the service account attached to the resource. When deployed to GKE, ADC
+can be leveraged through a feature called Workload Identity. Follow Google's [guide](https://cloud.google.com/kubernetes-engine/docs/how-to/workload-identity)
+to set up Workload Identity.
+
+When deployed outside of GCP, [Workload Identity Federation](https://cloud.google.com/docs/authentication/provide-credentials-adc#wlif) might be an option.
 
 ```
 https://www.googleapis.com/auth/admin.directory.group.readonly
@@ -137,7 +147,7 @@ Note: When using the ADFS Auth provider with nginx and the cookie session store 
 1.  Create a new project: https://github.com/settings/developers
 2.  Under `Authorization callback URL` enter the correct url ie `https://internal.yourcompany.com/oauth2/callback`
 
-The GitHub auth provider supports two additional ways to restrict authentication to either organization and optional team level access, or to collaborators of a repository. Restricting by these options is normally accompanied with `--email-domain=*`
+The GitHub auth provider supports two additional ways to restrict authentication to either organization and optional team level access, or to collaborators of a repository. Restricting by these options is normally accompanied with `--email-domain=*`. Additionally, all the organizations and teams a user belongs to are set as part of the `X-Forwarded-Groups` header. e.g. `org1:team1,org1:team2,org2:team1`
 
 NOTE: When `--github-user` is set, the specified users are allowed to login even if they do not belong to the specified org and team or collaborators.
 
@@ -208,7 +218,7 @@ you should define the 'keycloak-group' value to /admin.
     --client-id=<your client's id>
     --client-secret=<your client's secret>
     --redirect-url=https://internal.yourcompany.com/oauth2/callback
-    --oidc-issuer-url=https://<keycloak host>/auth/realms/<your realm>
+    --oidc-issuer-url=https://<keycloak host>/realms/<your realm> // For Keycloak versions <17: --oidc-issuer-url=https://<keycloak host>/auth/realms/<your realm>
     --email-domain=<yourcompany.com> // Validate email domain for users, see option documentation
     --allowed-role=<realm role name> // Optional, required realm role
     --allowed-role=<client id>:<client role name> // Optional, required client role
