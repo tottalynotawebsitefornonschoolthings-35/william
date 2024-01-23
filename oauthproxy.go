@@ -202,9 +202,18 @@ func NewOAuthProxy(opts *options.Options, validator func(string) bool) (*OAuthPr
 		return nil, fmt.Errorf("could not build pre-auth chain: %v", err)
 	}
 	sessionChain := buildSessionChain(opts, provider, basicAuthValidator)
-	sessionChain = appendStoredSessionHandler(sessionChain, opts, provider, sessionStore)
+	sessionChain = sessionChain.Append(middleware.NewStoredSessionLoader(&middleware.StoredSessionLoaderOptions{
+		SessionStore:    sessionStore,
+		RefreshPeriod:   opts.Cookie.Refresh,
+		RefreshSession:  provider.RefreshSession,
+		ValidateSession: provider.ValidateSession,
+	}))
 	refreshChain := buildSessionChain(opts, provider, basicAuthValidator)
-	refreshChain = appendRefreshHandler(refreshChain, opts, provider, sessionStore)
+	refreshChain = refreshChain.Append(middleware.NewStoredSessionRefresher(&middleware.StoredSessionLoaderOptions{SessionStore: sessionStore,
+		RefreshPeriod:   opts.Cookie.Refresh,
+		RefreshSession:  provider.RefreshSession,
+		ValidateSession: provider.ValidateSession,
+	}))
 
 	headersChain, err := buildHeadersChain(opts)
 	if err != nil {
@@ -417,23 +426,6 @@ func buildSessionChain(opts *options.Options, provider providers.Provider, valid
 	}
 
 	return chain
-}
-
-func appendStoredSessionHandler(chain alice.Chain, opts *options.Options, provider providers.Provider, sessionStore sessionsapi.SessionStore) alice.Chain {
-	return chain.Append(middleware.NewStoredSessionLoader(&middleware.StoredSessionLoaderOptions{
-		SessionStore:    sessionStore,
-		RefreshPeriod:   opts.Cookie.Refresh,
-		RefreshSession:  provider.RefreshSession,
-		ValidateSession: provider.ValidateSession,
-	}))
-}
-
-func appendRefreshHandler(chain alice.Chain, opts *options.Options, provider providers.Provider, sessionStore sessionsapi.SessionStore) alice.Chain {
-	return chain.Append(middleware.NewStoredSessionRefresher(&middleware.StoredSessionLoaderOptions{SessionStore: sessionStore,
-		RefreshPeriod:   opts.Cookie.Refresh,
-		RefreshSession:  provider.RefreshSession,
-		ValidateSession: provider.ValidateSession,
-	}))
 }
 
 func buildHeadersChain(opts *options.Options) (alice.Chain, error) {
