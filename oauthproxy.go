@@ -201,16 +201,8 @@ func NewOAuthProxy(opts *options.Options, validator func(string) bool) (*OAuthPr
 	if err != nil {
 		return nil, fmt.Errorf("could not build pre-auth chain: %v", err)
 	}
-	sessionChain := buildChainForSessionHandler(opts, provider, sessionStore, basicAuthValidator, middleware.NewStoredSessionLoader(&middleware.StoredSessionLoaderOptions{SessionStore: sessionStore,
-		RefreshPeriod:   opts.Cookie.Refresh,
-		RefreshSession:  provider.RefreshSession,
-		ValidateSession: provider.ValidateSession,
-	}))
-	refreshChain := buildChainForSessionHandler(opts, provider, sessionStore, basicAuthValidator, middleware.NewStoredSessionRefresher(&middleware.StoredSessionLoaderOptions{SessionStore: sessionStore,
-		RefreshPeriod:   opts.Cookie.Refresh,
-		RefreshSession:  provider.RefreshSession,
-		ValidateSession: provider.ValidateSession,
-	}))
+	sessionChain := buildChainForSessionHandler(opts, provider, sessionStore, basicAuthValidator)
+	refreshChain := buildChainForRefreshHandler(opts, provider, sessionStore, basicAuthValidator)
 	headersChain, err := buildHeadersChain(opts)
 	if err != nil {
 		return nil, fmt.Errorf("could not build headers chain: %v", err)
@@ -401,7 +393,7 @@ func buildPreAuthChain(opts *options.Options, sessionStore sessionsapi.SessionSt
 	return chain, nil
 }
 
-func buildChainForSessionHandler(opts *options.Options, provider providers.Provider, sessionStore sessionsapi.SessionStore, validator basic.Validator, handler alice.Constructor) alice.Chain {
+func buildChainForSessionHandler(opts *options.Options, provider providers.Provider, sessionStore sessionsapi.SessionStore, validator basic.Validator) alice.Chain {
 	chain := alice.New()
 
 	if opts.SkipJwtBearerTokens {
@@ -414,7 +406,7 @@ func buildChainForSessionHandler(opts *options.Options, provider providers.Provi
 				middlewareapi.CreateTokenToSessionFunc(verifier.Verify))
 		}
 
-		chain = chain.Append(middleware.NewJwtSessionLoader(sessionLoaders)).Append(handler)
+		chain = chain.Append(middleware.NewJwtSessionLoader(sessionLoaders))
 	}
 
 	if validator != nil {
@@ -423,6 +415,35 @@ func buildChainForSessionHandler(opts *options.Options, provider providers.Provi
 
 	chain = chain.Append(middleware.NewStoredSessionLoader(&middleware.StoredSessionLoaderOptions{
 		SessionStore:    sessionStore,
+		RefreshPeriod:   opts.Cookie.Refresh,
+		RefreshSession:  provider.RefreshSession,
+		ValidateSession: provider.ValidateSession,
+	}))
+
+	return chain
+}
+
+func buildChainForRefreshHandler(opts *options.Options, provider providers.Provider, sessionStore sessionsapi.SessionStore, validator basic.Validator) alice.Chain {
+	chain := alice.New()
+
+	if opts.SkipJwtBearerTokens {
+		sessionLoaders := []middlewareapi.TokenToSessionFunc{
+			provider.CreateSessionFromToken,
+		}
+
+		for _, verifier := range opts.GetJWTBearerVerifiers() {
+			sessionLoaders = append(sessionLoaders,
+				middlewareapi.CreateTokenToSessionFunc(verifier.Verify))
+		}
+
+		chain = chain.Append(middleware.NewJwtSessionLoader(sessionLoaders))
+	}
+
+	if validator != nil {
+		chain = chain.Append(middleware.NewBasicAuthSessionLoader(validator, opts.HtpasswdUserGroups, opts.LegacyPreferEmailToUser))
+	}
+
+	chain = chain.Append(middleware.NewStoredSessionRefresher(&middleware.StoredSessionLoaderOptions{SessionStore: sessionStore,
 		RefreshPeriod:   opts.Cookie.Refresh,
 		RefreshSession:  provider.RefreshSession,
 		ValidateSession: provider.ValidateSession,
