@@ -103,31 +103,30 @@ func (p *OIDCProvider) EnrichSession(_ context.Context, s *sessions.SessionState
 
 // ValidateSession checks that the session's id_token or access_token (when a ValidateURL is configured) is still valid
 func (p *OIDCProvider) ValidateSession(ctx context.Context, s *sessions.SessionState) bool {
-	valid := false
-	// verify session using AccessToken and ValidateURL when set
-	if p.ValidateURL.String() != "" {
-		valid = validateToken(ctx, p, s.AccessToken, makeOIDCHeader(s.AccessToken))
-		if !valid {
+	if s.IDToken == "" {
+		logger.Println("no new id token has been redeemed after refresh")
+		if !validateToken(ctx, p, s.AccessToken, makeOIDCHeader(s.AccessToken)) {
 			logger.Errorf("access token is invalid")
+			return false
 		}
-	} else { // verify ID Token otherwise
-		_, err := p.Verifier.Verify(ctx, s.IDToken)
-		valid = err == nil
-		if !valid {
-			logger.Errorf("id_token verification failed: %v", err)
-		}
+		return true
 	}
 
-	if !valid || (valid && p.SkipNonce) {
-		return valid
+	if _, err := p.Verifier.Verify(ctx, s.IDToken); err != nil {
+		logger.Errorf("id_token verification failed: %v", err)
+		return false
 	}
-	err := p.checkNonce(s)
-	if err != nil {
+
+	if p.SkipNonce {
+		return true
+	}
+
+	if err := p.checkNonce(s); err != nil {
 		logger.Errorf("nonce verification failed: %v", err)
-		valid = false
+		return false
 	}
 
-	return valid
+	return true
 }
 
 // RefreshSession uses the RefreshToken to fetch new Access and ID Tokens
