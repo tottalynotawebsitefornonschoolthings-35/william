@@ -112,24 +112,21 @@ func (p *OIDCProvider) ValidateSession(ctx context.Context, s *sessions.SessionS
 		logger.Errorf("id_token verification failed: %v", err)
 		return false
 	}
-
 	if s.IntrospectToken {
 		if _, err := p.introspectToken(s.AccessToken); err != nil {
 			logger.Errorf("inspect token failed: %v", err)
 			return false
 		}
 	}
-
 	if p.SkipNonce {
 		return true
 	}
 	err = p.checkNonce(s)
 	if err != nil {
 		logger.Errorf("nonce verification failed: %v", err)
-		return false
 	}
 
-	return true
+	return err == nil
 }
 
 // RefreshSession uses the RefreshToken to fetch new Access and ID Tokens
@@ -279,8 +276,8 @@ func (p *OIDCProvider) introspectToken(token string) (*simplejson.Json, error) {
 	}
 
 	if string(active) != "true" {
-		return nil, fmt.Errorf("token status is inactive")
+		err = fmt.Errorf("token status is inactive")
 	}
 
-	return js, nil
+	return js, err
 }
