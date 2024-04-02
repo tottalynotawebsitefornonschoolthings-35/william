@@ -201,19 +201,20 @@ func NewOAuthProxy(opts *options.Options, validator func(string) bool) (*OAuthPr
 	if err != nil {
 		return nil, fmt.Errorf("could not build pre-auth chain: %v", err)
 	}
-	sessionChain := buildSessionChain(opts, provider, basicAuthValidator)
-	sessionChain = sessionChain.Append(middleware.NewStoredSessionLoader(&middleware.StoredSessionLoaderOptions{
-		SessionStore:    sessionStore,
-		RefreshPeriod:   opts.Cookie.Refresh,
-		RefreshSession:  provider.RefreshSession,
-		ValidateSession: provider.ValidateSession,
-	}))
-	refreshChain := buildSessionChain(opts, provider, basicAuthValidator)
-	refreshChain = refreshChain.Append(middleware.NewStoredSessionRefresher(&middleware.StoredSessionLoaderOptions{SessionStore: sessionStore,
-		RefreshPeriod:   opts.Cookie.Refresh,
-		RefreshSession:  provider.RefreshSession,
-		ValidateSession: provider.ValidateSession,
-	}))
+	sessionChain := buildSessionChain(opts, provider, basicAuthValidator).Append(
+		middleware.NewStoredSessionLoader(&middleware.StoredSessionLoaderOptions{
+			SessionStore:    sessionStore,
+			RefreshPeriod:   opts.Cookie.Refresh,
+			RefreshSession:  provider.RefreshSession,
+			ValidateSession: provider.ValidateSession,
+		}))
+	refreshChain := buildSessionChain(opts, provider, basicAuthValidator).Append(
+		middleware.NewStoredSessionRefresher(&middleware.StoredSessionLoaderOptions{
+			SessionStore:    sessionStore,
+			RefreshPeriod:   opts.Cookie.Refresh,
+			RefreshSession:  provider.RefreshSession,
+			ValidateSession: provider.ValidateSession,
+		}))
 
 	headersChain, err := buildHeadersChain(opts)
 	if err != nil {
