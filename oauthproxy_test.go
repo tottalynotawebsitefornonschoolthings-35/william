@@ -215,7 +215,7 @@ func TestBasicAuthPassword(t *testing.T) {
 					ClaimSource: &options.ClaimSource{
 						Claim: "email",
 						BasicAuthPassword: &options.SecretSource{
-							Value: []byte(basicAuthPassword),
+							Value: basicAuthPassword,
 						},
 					},
 				},
@@ -1279,7 +1279,7 @@ func TestAuthOnlyEndpointSetBasicAuthTrueRequestHeaders(t *testing.T) {
 					ClaimSource: &options.ClaimSource{
 						Claim: "user",
 						BasicAuthPassword: &options.SecretSource{
-							Value: []byte("This is a secure password"),
+							Value: "This is a secure password",
 						},
 					},
 				},
@@ -2041,7 +2041,7 @@ func baseTestOptions() *options.Options {
 					ClaimSource: &options.ClaimSource{
 						Claim: "user",
 						BasicAuthPassword: &options.SecretSource{
-							Value: []byte(base64.StdEncoding.EncodeToString([]byte("This is a secure password"))),
+							Value: base64.StdEncoding.EncodeToString([]byte("This is a secure password")),
 						},
 					},
 				},

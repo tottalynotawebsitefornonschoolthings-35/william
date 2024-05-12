@@ -189,7 +189,7 @@ var _ = Describe("Headers Suite", func() {
 							ClaimSource: &options.ClaimSource{
 								Claim: "user",
 								BasicAuthPassword: &options.SecretSource{
-									Value:   []byte(base64.StdEncoding.EncodeToString([]byte("basic-password"))),
+									Value:   base64.StdEncoding.EncodeToString([]byte("basic-password")),
 									FromEnv: "SECRET_ENV",
 								},
 							},
@@ -261,7 +261,7 @@ var _ = Describe("Headers Suite", func() {
 					Values: []options.HeaderValue{
 						{
 							SecretSource: &options.SecretSource{
-								Value: []byte("_oauth2_proxy=ey123123123"),
+								Value: "_oauth2_proxy=ey123123123",
 							},
 						},
 					},
@@ -271,7 +271,7 @@ var _ = Describe("Headers Suite", func() {
 					Values: []options.HeaderValue{
 						{
 							SecretSource: &options.SecretSource{
-								Value: []byte("oauth_user"),
+								Value: "oauth_user",
 							},
 						},
 					},
@@ -417,7 +417,7 @@ var _ = Describe("Headers Suite", func() {
 							ClaimSource: &options.ClaimSource{
 								Claim: "user",
 								BasicAuthPassword: &options.SecretSource{
-									Value:   []byte(base64.StdEncoding.EncodeToString([]byte("basic-password"))),
+									Value:   base64.StdEncoding.EncodeToString([]byte("basic-password")),
 									FromEnv: "SECRET_ENV",
 								},
 							},
