@@ -220,6 +220,8 @@ An example [oauth2-proxy.cfg](https://github.com/oauth2-proxy/oauth2-proxy/blob/
 | `--csrftoken-response-header` | string | The name of the actual CSRF token header to return to client. If set to empty string, no CSRF token header will be set by oauth2-proxy. | `"X-CSRF-Token"` |
 | `--skip-csrftoken-routes` | string \| list | Bypass CSRF token validation for requests that match the method & path.
 Format: method=path_regex OR method!=path_regex. For all methods: path_regex OR !=path_regex. To disable CSRF token validation set to `"/*"` |  |
+| `--auth-method` | string | The name of the header for passing the authentication method (`"cookie"`, `"header"`) to upstream. | `"AuthMethod"` |
+
 
 [^1]: Only these providers support `--cookie-refresh`: GitLab, Google and OIDC
 [^2]: When using the `whitelist-domain` option, any domain prefixed with a `.` or a `*.` will allow any subdomain of the specified domain as a valid redirect URL. By default, only empty ports are allowed. This translates to allowing the default port of the URLs protocol (80 for HTTP, 443 for HTTPS, etc.) since browsers omit them. To allow only a specific port, add it to the whitelisted domain: `example.com:8080`. To allow any port, use `*`: `example.com:*`.
