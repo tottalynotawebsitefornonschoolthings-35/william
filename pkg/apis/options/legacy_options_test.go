@@ -110,6 +110,11 @@ var _ = Describe("Legacy Options", func() {
 						},
 					},
 				},
+				{
+					Name:                 "X-CSRF-Token",
+					PreserveRequestValue: false,
+					Values:               []HeaderValue{},
+				},
 			}
 
 			opts.InjectResponseHeaders = []Header{}
