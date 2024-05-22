@@ -145,9 +145,7 @@ var _ = Describe("Injector Suite", func() {
 				initialHeaders: http.Header{
 					"foo": []string{"bar", "baz"},
 				},
-				scope: &middlewareapi.RequestScope{
-					Session: nil,
-				},
+				scope: &middlewareapi.RequestScope{},
 				expectedHeaders: http.Header{
 					"foo": []string{"bar", "baz"},
 				},
