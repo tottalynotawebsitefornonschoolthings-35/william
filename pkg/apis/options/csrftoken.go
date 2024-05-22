@@ -22,7 +22,7 @@ func csrfTokenFlagSet() *pflag.FlagSet {
 	flagSet := pflag.NewFlagSet("csrftoken", pflag.ExitOnError)
 
 	flagSet.Bool("csrftoken", false, "enable the CSRF token generation")
-	flagSet.String("csrftoken-cookie-name", "_oauth2_proxy_csrftoken", "the name of the CSRF token cookie that the oauth2-proxy creates. If set to empty string, so CSRF cookie will be created for the session.")
+	flagSet.String("csrftoken-cookie-name", "_oauth2_proxy_csrftoken", "the name of the CSRF token cookie that the oauth2-proxy creates. If set to empty string, no CSRF cookie will be created for the session.")
 	flagSet.StringSlice("csrftoken-cookie-domain", []string{}, "the domain(s) of the CSRF token cookie (ie: `.yourcompany.com`). The longest domain matching the request's host will be used (or the shortest cookie domain if there is no match).")
 	flagSet.String("csrftoken-cookie-path", "/", "the path of the CSRF token cookie (ie: /poc/)*")
 	flagSet.Duration("csrftoken-cookie-expire", time.Duration(168)*time.Hour, "expiration timeframe for the CSRF token cookie")
