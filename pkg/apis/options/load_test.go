@@ -26,9 +26,11 @@ var _ = Describe("Load", func() {
 		},
 
 		LegacyHeaders: LegacyHeaders{
-			PassBasicAuth:        true,
-			PassUserHeaders:      true,
-			SkipAuthStripHeaders: true,
+			PassBasicAuth:           true,
+			PassUserHeaders:         true,
+			SkipAuthStripHeaders:    true,
+			CSRFTokenResponseHeader: "X-CSRF-Token",
+			AuthMethod:              "AuthMethod",
 		},
 
 		LegacyServer: LegacyServer{
@@ -54,6 +56,7 @@ var _ = Describe("Load", func() {
 			RealClientIPHeader: "X-Real-IP",
 			ForceHTTPS:         false,
 			Cookie:             cookieDefaults(),
+			CSRFToken:          CSRFTokenDefaults(),
 			Session:            sessionOptionsDefaults(),
 			Templates:          templatesDefaults(),
 			SkipAuthPreflight:  false,

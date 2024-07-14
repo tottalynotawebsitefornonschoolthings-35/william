@@ -210,6 +210,19 @@ An example [oauth2-proxy.cfg](https://github.com/oauth2-proxy/oauth2-proxy/blob/
 | `--whitelist-domain` | string \| list | allowed domains for redirection after authentication. Prefix domain with a `.` or a `*.` to allow subdomains (e.g. `.example.com`, `*.example.com`)&nbsp;[^2] | |
 | `--trusted-ip` | string \| list | list of IPs or CIDR ranges to allow to bypass authentication (may be given multiple times). When combined with `--reverse-proxy` and optionally `--real-client-ip-header` this will evaluate the trust of the IP stored in an HTTP header by a reverse proxy rather than the layer-3/4 remote address. WARNING: trusting IPs has inherent security flaws, especially when obtaining the IP address from an HTTP header (reverse-proxy mode). Use this option only if you understand the risks and how to manage them. | |
 | `--encode-state` | bool | encode the state parameter as UrlEncodedBase64 | false |
+| `--csrftoken` | bool | Enable CSRF token generation mechanism in oauth2-proxy. | false |
+| `--csrftoken-cookie-name` | string | The name of the CSRF cookie. If set to empty string, no CSRF cookie will be set by oauth2-proxy. | `"_oauth2_proxy_csrftoken"` |
+| `--csrftoken-cookie-domain` | string \| list | Optional cookie domains to set CSRF cookies to (e.g. `.yourcompany.com`). The longest domain matching the request's host will be used (or the shortest cookie domain if there is no match). |  |
+| `--csrftoken-cookie-path` | string | An optional cookie path to set CSRF cookies to (e.g. `/poc/`). | `"/"` |
+| `--csrftoken-cookie-secure` | bool | set [secure (HTTPS only) cookie flag](https://owasp.org/www-community/controls/SecureCookieAttribute). | true |
+| `--csrftoken-cookie-httponly` | bool | Enable HttpOnly for CSRF cookie. | false |
+| `--csrftoken-cookie-samesite` | string | Set SameSite cookie attribute for CSRF cookie (`"lax"`, `"strict"`, `"none"`, or `""`). | `"strict"` |
+| `--csrftoken-header` | string | The name of the header for holding the CSRF token sent from the client. | `"X-CSRF-Token"` |
+| `--csrftoken-response-header` | string | The name of the actual CSRF token header to return to client. If set to empty string, no CSRF token header will be set by oauth2-proxy. | `"X-CSRF-Token"` |
+| `--skip-csrftoken-routes` | string \| list | Bypass CSRF token validation for requests that match the method & path.
+Format: method=path_regex OR method!=path_regex. For all methods: path_regex OR !=path_regex. To disable CSRF token validation set to `"/*"` |  |
+| `--auth-method` | string | The name of the header for passing the authentication method (`"cookie"`, `"header"`) to upstream. | `"AuthMethod"` |
+
 
 [^1]: Only these providers support `--cookie-refresh`: GitLab, Google and OIDC
 [^2]: When using the `whitelist-domain` option, any domain prefixed with a `.` or a `*.` will allow any subdomain of the specified domain as a valid redirect URL. By default, only empty ports are allowed. This translates to allowing the default port of the URLs protocol (80 for HTTP, 443 for HTTPS, etc.) since browsers omit them. To allow only a specific port, add it to the whitelisted domain: `example.com:8080`. To allow any port, use `*`: `example.com:*`.
