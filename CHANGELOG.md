@@ -14,7 +14,7 @@
 - [#2674](https://github.com/oauth2-proxy/oauth2-proxy/pull/2674) docs: additional notes about available claims for HeaderValue (@vegetablest)
 - [#2459](https://github.com/oauth2-proxy/oauth2-proxy/pull/2459) chore(deps): Updated to ginkgo v2 (@kvanzuijlen, @tuunit)
 - [#2112](https://github.com/oauth2-proxy/oauth2-proxy/pull/2112) docs: update list of providers which support refresh tokens (@mikefab-msf)
-- [#2273](https://github.com/oauth2-proxy/oauth2-proxy/pull/2273) Add Cidaas provider (@Bibob7)
+- [#2273](https://github.com/oauth2-proxy/oauth2-proxy/pull/2273) Add Cidaas provider (@Bibob7, @Teko012)
 
 # V7.6.0
 
