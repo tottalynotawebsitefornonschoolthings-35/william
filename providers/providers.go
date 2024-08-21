@@ -43,6 +43,8 @@ func NewProvider(providerConfig options.Provider) (Provider, error) {
 		return NewAzureProvider(providerData, providerConfig.AzureConfig), nil
 	case options.BitbucketProvider:
 		return NewBitbucketProvider(providerData, providerConfig.BitbucketConfig), nil
+	case options.CidaasProvider:
+		return NewCIDAASProvider(providerData), nil
 	case options.DigitalOceanProvider:
 		return NewDigitalOceanProvider(providerData), nil
 	case options.FacebookProvider:
@@ -181,7 +183,7 @@ func providerRequiresOIDCProviderVerifier(providerType options.ProviderType) (bo
 	case options.BitbucketProvider, options.DigitalOceanProvider, options.FacebookProvider, options.GitHubProvider,
 		options.GoogleProvider, options.KeycloakProvider, options.LinkedInProvider, options.LoginGovProvider, options.NextCloudProvider:
 		return false, nil
-	case options.ADFSProvider, options.AzureProvider, options.GitLabProvider, options.KeycloakOIDCProvider, options.OIDCProvider:
+	case options.ADFSProvider, options.AzureProvider, options.CidaasProvider, options.GitLabProvider, options.KeycloakOIDCProvider, options.OIDCProvider:
 		return true, nil
 	default:
 		return false, fmt.Errorf("unknown provider type: %s", providerType)
