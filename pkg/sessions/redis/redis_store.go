@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"errors"
 	"fmt"
 	"os"
 	"time"
@@ -32,7 +33,7 @@ func NewRedisSessionStore(opts *options.SessionOptions, cookieOpts *options.Cook
 	rs := &SessionStore{
 		Client: client,
 	}
-	return persistence.NewManager(rs, cookieOpts), nil
+	return persistence.NewManager(rs, cookieOpts, opts.Redis.EnforceSingleSession), nil
 }
 
 // Save takes a sessions.SessionState and stores the information from it
@@ -43,6 +44,81 @@ func (store *SessionStore) Save(ctx context.Context, key string, value []byte, e
 		return fmt.Errorf("error saving redis session: %v", err)
 	}
 	return nil
+}
+
+const (
+
+	// Prefix mapping keys with this string followed by a semicolon
+	mappingNamespace = "email"
+
+	// When attempting to obtain the lock, if it's not done before this timeout
+	// then exit and fail the refresh attempt.
+	// TODO: This should probably be configurable by the end user.
+	mappingUpdateObtainTimeout = 5 * time.Second
+
+	// Maximum time allowed for a session refresh attempt.
+	// If the refresh request isn't finished within this time, the lock will be
+	// released.
+	// TODO: This should probably be configurable by the end user.
+	mappingUpdateLockDuration = 2 * time.Second
+
+	// How long to wait after failing to obtain the lock before trying again.
+	// TODO: This should probably be configurable by the end user.
+	mappingUpdateRetryPeriod = 10 * time.Millisecond
+)
+
+// SaveAndEvict takes a sessions.SessionState and stores the information from it
+// to redis, invalidating any existing session for this user, maintains a bookkeeping map of email to session key, and
+// adds a new persistence cookie on the HTTP response writer
+func (store *SessionStore) SaveAndEvict(ctx context.Context, key string, value []byte, email string, exp time.Duration) error {
+	err := store.Client.Set(ctx, key, value, exp)
+	if err != nil {
+		return fmt.Errorf("error saving redis session: %v", err)
+	}
+	emailKey := addNameSpace(email)
+	lock := store.Client.Lock(fmt.Sprintf("%s.lock", emailKey))
+
+	var lockObtained bool
+	ctx, cancel := context.WithTimeout(ctx, mappingUpdateObtainTimeout)
+	defer cancel()
+
+	for !lockObtained {
+		select {
+		case <-ctx.Done():
+			return errors.New("timeout obtaining mapping update lock")
+		default:
+			err := lock.Obtain(ctx, mappingUpdateLockDuration)
+			if err != nil && !errors.Is(err, sessions.ErrLockNotObtained) {
+				return fmt.Errorf("error occurred while trying to obtain lock: %v", err)
+			} else if errors.Is(err, sessions.ErrLockNotObtained) {
+				time.Sleep(mappingUpdateRetryPeriod)
+				continue
+			}
+			// No error means we obtained the lock
+			lockObtained = true
+		}
+	}
+
+	defer func(lock sessions.Lock, ctx context.Context) {
+		_ = lock.Release(ctx)
+	}(lock, ctx)
+
+	lastSession, err := store.Client.GetSet(ctx, emailKey, []byte(key))
+	if err != nil && err != redis.Nil {
+		return fmt.Errorf("error saving redis user to session mapping: %v", err)
+	}
+	if len(lastSession) > 0 {
+		err = store.Client.Del(ctx, string(lastSession))
+		if err != nil {
+			// Deleting a missing key will result in a zero count so this an actual error
+			return fmt.Errorf("error evicting previous redis session: %v", err)
+		}
+	}
+	return nil
+}
+
+func addNameSpace(user string) string {
+	return fmt.Sprintf("%s:%s", mappingNamespace, user)
 }
 
 // Load reads sessions.SessionState information from a persistence
