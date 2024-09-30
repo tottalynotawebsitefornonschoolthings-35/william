@@ -4,19 +4,15 @@ on:
   push:
     branches:
       - '**'
-      # - $default-branch
   pull_request:
     branches:
       - '**'
-      # - $default-branch
-
 jobs:
   build:
+    runs-on: ubuntu-latest
     env:
       COVER: true
-    runs-on: ubuntu-latest
     steps:
-
     - name: Check out code
       uses: actions/checkout@v4
 
@@ -30,7 +26,7 @@ jobs:
     - name: Get dependencies
       env:
         # renovate: datasource=github-tags depName=golangci/golangci-lint
-        GOLANGCI_LINT_VERSION: v1.55.2
+        GOLANGCI_LINT_VERSION: v1.61.0
         # renovate: datasource=github-tags depName=codeclimate/test-reporter
         CODECLIMATE_VERSION: v1.0.1
       run: |
@@ -59,7 +55,6 @@ jobs:
   docker:
     runs-on: ubuntu-latest
     steps:
-
     - name: Check out code
       uses: actions/checkout@v4
 
