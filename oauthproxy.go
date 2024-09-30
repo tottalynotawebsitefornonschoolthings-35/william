@@ -627,13 +627,6 @@ func (p *OAuthProxy) isTrustedIP(req *http.Request) bool {
 // SignInPage writes the sign in template to the response
 func (p *OAuthProxy) SignInPage(rw http.ResponseWriter, req *http.Request, code int) {
 	prepareNoCache(rw)
-	err := p.ClearSessionCookie(rw, req)
-	if err != nil {
-		logger.Printf("Error clearing session cookie: %v", err)
-		p.ErrorPage(rw, req, http.StatusInternalServerError, err.Error())
-		return
-	}
-	rw.WriteHeader(code)
 
 	redirectURL, err := p.appDirector.GetRedirect(req)
 	if err != nil {
@@ -646,6 +639,11 @@ func (p *OAuthProxy) SignInPage(rw http.ResponseWriter, req *http.Request, code 
 		redirectURL = "/"
 	}
 
+	if err := p.ClearSessionCookie(rw, req); err != nil {
+		logger.Printf("Error clearing session cookie: %v", err)
+	}
+
+	rw.WriteHeader(code)
 	p.pageWriter.WriteSignInPage(rw, req, redirectURL, code)
 }
 
