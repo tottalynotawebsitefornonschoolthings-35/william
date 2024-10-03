@@ -5,6 +5,8 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"github.com/coreos/go-oidc/v3/oidc"
+	"github.com/oauth2-proxy/oauth2-proxy/v7/pkg/requests"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -506,7 +508,8 @@ func newTestClaimExtractor(in testClaimExtractorOpts) (ClaimExtractor, func(), e
 
 	rawIDToken := createJWTFromPayload(in.idTokenPayload)
 
-	claimExtractor, err := NewClaimExtractor(context.Background(), rawIDToken, profileURL, in.profileRequestHeaders)
+	ctx := oidc.ClientContext(context.Background(), requests.DefaultHTTPClient)
+	claimExtractor, err := NewClaimExtractor(ctx, rawIDToken, profileURL, in.profileRequestHeaders)
 	return claimExtractor, closeServer, err
 }
 

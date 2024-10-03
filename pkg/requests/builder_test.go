@@ -26,7 +26,7 @@ var _ = Describe("Builder suite", func() {
 
 	BeforeEach(func() {
 		// Most tests will request the server address
-		b = New(serverAddr + "/json/path")
+		b = New(serverAddr + "/json/path").WithClient(DefaultHTTPClient)
 	})
 
 	Context("with a basic request", func() {
@@ -234,7 +234,7 @@ var _ = Describe("Builder suite", func() {
 
 	Context("when the requested page is not found", func() {
 		BeforeEach(func() {
-			b = New(serverAddr + "/not-found")
+			b = New(serverAddr + "/not-found").WithClient(DefaultHTTPClient)
 		})
 
 		assertJSONError(getBuilder, "404 page not found")
@@ -242,7 +242,7 @@ var _ = Describe("Builder suite", func() {
 
 	Context("when the requested page is not valid JSON", func() {
 		BeforeEach(func() {
-			b = New(serverAddr + "/string/path")
+			b = New(serverAddr + "/string/path").WithClient(DefaultHTTPClient)
 		})
 
 		assertJSONError(getBuilder, "invalid character 'O' looking for beginning of value")

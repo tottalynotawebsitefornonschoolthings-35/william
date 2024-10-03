@@ -86,7 +86,7 @@ func (p *OIDCProvider) Redeem(ctx context.Context, redirectURL, code, codeVerifi
 		RedirectURL: redirectURL,
 	}
 
-	ctx = oidc.ClientContext(ctx, requests.DefaultHTTPClient)
+	ctx = oidc.ClientContext(ctx, p.Client)
 	token, err := c.Exchange(ctx, code, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("token exchange failed: %v", err)
@@ -132,8 +132,11 @@ func (p *OIDCProvider) RefreshSession(ctx context.Context, s *sessions.SessionSt
 		return false, nil
 	}
 
-	ctx = oidc.ClientContext(ctx, requests.DefaultHTTPClient)
-	err := p.redeemRefreshToken(ctx, s)
+	ctxWithClient := context.WithValue(ctx, oauth2.HTTPClient, p.Client)
+	err := p.redeemRefreshToken(ctxWithClient, s)
+
+	ctx = oidc.ClientContext(ctx, p.Client)
+	err = p.redeemRefreshToken(ctx, s)
 	if err != nil {
 		return false, fmt.Errorf("unable to redeem refresh token: %v", err)
 	}
